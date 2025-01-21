@@ -25,6 +25,11 @@ export default {
     const app = new Hono();
     app.get("/health", (c) => c.json({ status: "ok" }));
 
+    // https://hono.dev/docs/api/routing#grouping
+    const fe = new Hono();
+    fe.get("/", (c) => c.text("Hello fe"));
+    app.route("/fe", fe);
+
     const openauth = issuer({
       storage: CloudflareStorage({
         namespace: env.CloudflareAuthKV,
@@ -48,9 +53,7 @@ export default {
         throw new Error("Invalid provider");
       },
     });
-
-    // Mount OpenAuth routes last
-    app.route("/", openauth);
+    app.route("/", openauth); // Mount last
 
     return app.fetch(request, env, ctx);
   },
