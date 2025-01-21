@@ -8,6 +8,7 @@ import { subjects } from "./subjects.js";
 import { PasswordProvider } from "@openauthjs/openauth/provider/password";
 import { PasswordUI } from "@openauthjs/openauth/ui/password";
 import { Hono } from "hono";
+import { createClient } from "@openauthjs/openauth/client";
 
 interface Env {
   CloudflareAuthKV: KVNamespace;
@@ -21,14 +22,53 @@ async function getUser(email: string) {
 
 export default {
   async fetch(request: Request, env: Env, ctx: ExecutionContext) {
-    // Impossible to extend with additional routes:https://github.com/openauthjs/openauth/issues/127#issuecomment-2569976202
-    const app = new Hono();
-    app.get("/health", (c) => c.json({ status: "ok" }));
+    const client = createClient({
+      clientID: "fe",
+      issuer: "http://localhost:8787",
+    });
+    const url = new URL(request.url);
+    const redirectURI = url.origin + "/fe/callback";
 
+    // Impossible to extend with additional routes:https://github.com/openauthjs/openauth/issues/127#issuecomment-2569976202
     // https://hono.dev/docs/api/routing#grouping
     const fe = new Hono();
-    fe.get("/", (c) => c.text("Hello fe"));
-    app.route("/fe", fe);
+    fe.get("/callback", async () => {
+      try {
+        const code = url.searchParams.get("code")!;
+        const exchanged = await client.exchange(code, redirectURI);
+        if (exchanged.err) throw new Error("Invalid code");
+        const response = new Response(null, { status: 302, headers: {} });
+        response.headers.set("Location", url.origin + "/fe");
+        setSession(response, exchanged.tokens.access, exchanged.tokens.refresh);
+        return response;
+      } catch (e: any) {
+        return new Response(e.toString());
+      }
+    });
+    fe.get("/authorize", async () =>
+      Response.redirect(
+        await client.authorize(redirectURI, "code").then((v) => v.url),
+        302
+      )
+    );
+    fe.get("/", async () => {
+      const cookies = new URLSearchParams(
+        request.headers.get("cookie")?.replaceAll("; ", "&")
+      );
+      const verified = await client.verify(
+        subjects,
+        cookies.get("access_token")!,
+        {
+          refresh: cookies.get("refresh_token") || undefined,
+        }
+      );
+      if (verified.err)
+        return Response.redirect(url.origin + "/fe/authorize", 302);
+      const response = Response.json(verified.subject);
+      if (verified.tokens)
+        setSession(response, verified.tokens.access, verified.tokens.refresh);
+      return response;
+    });
 
     const openauth = issuer({
       storage: CloudflareStorage({
@@ -53,8 +93,26 @@ export default {
         throw new Error("Invalid provider");
       },
     });
-    app.route("/", openauth); // Mount last
 
+    const app = new Hono();
+    app.route("/fe", fe);
+    app.route("/", openauth); // Mount last
     return app.fetch(request, env, ctx);
   },
 };
+
+// https://github.com/openauthjs/openauth/blob/master/examples/client/cloudflare-api/api.ts
+function setSession(response: Response, access: string, refresh: string) {
+  if (access) {
+    response.headers.append(
+      "Set-Cookie",
+      `access_token=${access}; HttpOnly; SameSite=Strict; Path=/; Max-Age=2147483647`
+    );
+  }
+  if (refresh) {
+    response.headers.append(
+      "Set-Cookie",
+      `refresh_token=${refresh}; HttpOnly; SameSite=Strict; Path=/; Max-Age=2147483647`
+    );
+  }
+}
