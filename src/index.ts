@@ -59,23 +59,13 @@ export default {
       const client = createClient({
         clientID: "fe",
         fetch: async (input, init) => {
-          console.log({ input, init });
           const request = new Request(input, init);
           return openauth.fetch(request, env, ctx);
         },
-        // fetch: async (
-        //   request: Request,
-        //   env: Env,
-        //   ctx: ExecutionContext
-        // ): Promise<Response> => {
-        //   console.log({ request, env, ctx });
-        //   return openauth.fetch(request, env, ctx);
-        // },
         issuer: origin,
       });
       c.set("client", client);
       c.set("redirectUri", origin + "/fe/callback");
-      console.log({ origin, redirectUrl: c.var.redirectUri });
       await next();
     });
 
@@ -83,9 +73,7 @@ export default {
       try {
         const url = new URL(c.req.url);
         const code = url.searchParams.get("code")!;
-        console.log({ code, redirectUri: c.var.redirectUri, url: c.req.url });
         const exchanged = await c.var.client.exchange(code, c.var.redirectUri);
-        console.log({ exchanged });
         if (exchanged.err) throw new Error("Invalid code");
         const response = new Response(null, { status: 302, headers: {} });
         response.headers.set("Location", url.origin + "/fe");
