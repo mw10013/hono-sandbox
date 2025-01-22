@@ -55,21 +55,21 @@ export default {
       };
     }>().basePath("/fe");
     fe.use(async (c, next) => {
+      const { origin } = new URL(c.req.url);
       const client = createClient({
         clientID: "fe",
-        fetch: async (
-          request: Request,
-          env: Env,
-          ctx: ExecutionContext
-        ): Promise<Response> => {
-          console.log({ request, env, ctx });
-          return openauth.fetch(request, env, ctx);
-        },
-        // fetch: openauth.fetch,
-        issuer: "http://localhost:8787",
+        // fetch: async (
+        //   request: Request,
+        //   env: Env,
+        //   ctx: ExecutionContext
+        // ): Promise<Response> => {
+        //   console.log({ request, env, ctx });
+        //   return openauth.fetch(request, env, ctx);
+        // },
+        issuer: origin,
       });
       c.set("client", client);
-      c.set("redirectUri", new URL(c.req.url).origin + "/fe/callback");
+      c.set("redirectUri", origin + "/fe/callback");
       await next();
     });
 
