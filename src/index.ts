@@ -58,6 +58,11 @@ export default {
       const { origin } = new URL(c.req.url);
       const client = createClient({
         clientID: "fe",
+        fetch: async (input, init) => {
+          console.log({ input, init });
+          const request = new Request(input, init);
+          return openauth.fetch(request, env, ctx);
+        },
         // fetch: async (
         //   request: Request,
         //   env: Env,
