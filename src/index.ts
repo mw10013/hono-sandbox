@@ -31,7 +31,7 @@ export default {
 
     // Impossible to extend with additional routes:https://github.com/openauthjs/openauth/issues/127#issuecomment-2569976202
     // https://hono.dev/docs/api/routing#grouping
-    const fe = new Hono();
+    const fe = new Hono().basePath("/fe");
     fe.get("/callback", async () => {
       try {
         const code = url.searchParams.get("code")!;
@@ -95,7 +95,7 @@ export default {
     });
 
     const app = new Hono();
-    app.route("/fe", fe);
+    app.route("/", fe);
     app.route("/", openauth); // Mount last
     return app.fetch(request, env, ctx);
   },
