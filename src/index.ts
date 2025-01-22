@@ -70,6 +70,7 @@ export default {
       });
       c.set("client", client);
       c.set("redirectUri", origin + "/fe/callback");
+      console.log({ origin, redirectUrl: c.var.redirectUri });
       await next();
     });
 
