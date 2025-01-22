@@ -8,7 +8,7 @@ compatibility_flags = [ "nodejs_compat" ]
 
 [[kv_namespaces]]
 binding = "CloudflareAuthKV"
-id = "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+id = "f40acac8f36e4c359963be79d6d245c1"
 
 # [[r2_buckets]]
 # binding = "MY_BUCKET"
