@@ -78,7 +78,9 @@ export default {
       try {
         const url = new URL(c.req.url);
         const code = url.searchParams.get("code")!;
+        console.log({ code, redirectUri: c.var.redirectUri, url: c.req.url });
         const exchanged = await c.var.client.exchange(code, c.var.redirectUri);
+        console.log({ exchanged });
         if (exchanged.err) throw new Error("Invalid code");
         const response = new Response(null, { status: 302, headers: {} });
         response.headers.set("Location", url.origin + "/fe");
