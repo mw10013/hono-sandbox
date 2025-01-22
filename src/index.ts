@@ -22,6 +22,30 @@ async function getUser(email: string) {
 
 export default {
   async fetch(request: Request, env: Env, ctx: ExecutionContext) {
+    const openauth = issuer({
+      storage: CloudflareStorage({
+        namespace: env.CloudflareAuthKV,
+      }),
+      subjects,
+      providers: {
+        password: PasswordProvider(
+          PasswordUI({
+            sendCode: async (email, code) => {
+              console.log(email, code);
+            },
+          })
+        ),
+      },
+      success: async (ctx, value) => {
+        if (value.provider === "password") {
+          return ctx.subject("user", {
+            id: await getUser(value.email),
+          });
+        }
+        throw new Error("Invalid provider");
+      },
+    });
+
     // Impossible to extend with additional routes:https://github.com/openauthjs/openauth/issues/127#issuecomment-2569976202
     // https://hono.dev/docs/api/routing#grouping
     const fe = new Hono<{
@@ -33,6 +57,15 @@ export default {
     fe.use(async (c, next) => {
       const client = createClient({
         clientID: "fe",
+        fetch: async (
+          request: Request,
+          env: Env,
+          ctx: ExecutionContext
+        ): Promise<Response> => {
+          console.log({ request, env, ctx });
+          return openauth.fetch(request, env, ctx);
+        },
+        // fetch: openauth.fetch,
         issuer: "http://localhost:8787",
       });
       c.set("client", client);
@@ -82,30 +115,6 @@ export default {
       if (verified.tokens)
         setSession(response, verified.tokens.access, verified.tokens.refresh);
       return response;
-    });
-
-    const openauth = issuer({
-      storage: CloudflareStorage({
-        namespace: env.CloudflareAuthKV,
-      }),
-      subjects,
-      providers: {
-        password: PasswordProvider(
-          PasswordUI({
-            sendCode: async (email, code) => {
-              console.log(email, code);
-            },
-          })
-        ),
-      },
-      success: async (ctx, value) => {
-        if (value.provider === "password") {
-          return ctx.subject("user", {
-            id: await getUser(value.email),
-          });
-        }
-        throw new Error("Invalid provider");
-      },
     });
 
     const app = new Hono();
