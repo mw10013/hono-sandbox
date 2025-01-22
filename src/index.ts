@@ -8,7 +8,7 @@ import { subjects } from "./subjects.js";
 import { PasswordProvider } from "@openauthjs/openauth/provider/password";
 import { PasswordUI } from "@openauthjs/openauth/ui/password";
 import { Hono } from "hono";
-import { createClient } from "@openauthjs/openauth/client";
+import { Client, createClient } from "@openauthjs/openauth/client";
 
 interface Env {
   CloudflareAuthKV: KVNamespace;
@@ -22,20 +22,29 @@ async function getUser(email: string) {
 
 export default {
   async fetch(request: Request, env: Env, ctx: ExecutionContext) {
-    const client = createClient({
-      clientID: "fe",
-      issuer: "http://localhost:8787",
-    });
-    const url = new URL(request.url);
-    const redirectURI = url.origin + "/fe/callback";
-
     // Impossible to extend with additional routes:https://github.com/openauthjs/openauth/issues/127#issuecomment-2569976202
     // https://hono.dev/docs/api/routing#grouping
-    const fe = new Hono().basePath("/fe");
-    fe.get("/callback", async () => {
+    const fe = new Hono<{
+      Variables: {
+        client: Client;
+        redirectUri: string;
+      };
+    }>().basePath("/fe");
+    fe.use(async (c, next) => {
+      const client = createClient({
+        clientID: "fe",
+        issuer: "http://localhost:8787",
+      });
+      c.set("client", client);
+      c.set("redirectUri", new URL(c.req.url).origin + "/fe/callback");
+      await next();
+    });
+
+    fe.get("/callback", async (c) => {
       try {
+        const url = new URL(c.req.url);
         const code = url.searchParams.get("code")!;
-        const exchanged = await client.exchange(code, redirectURI);
+        const exchanged = await c.var.client.exchange(code, c.var.redirectUri);
         if (exchanged.err) throw new Error("Invalid code");
         const response = new Response(null, { status: 302, headers: {} });
         response.headers.set("Location", url.origin + "/fe");
@@ -45,17 +54,19 @@ export default {
         return new Response(e.toString());
       }
     });
-    fe.get("/authorize", async () =>
+    fe.get("/authorize", async (c) =>
       Response.redirect(
-        await client.authorize(redirectURI, "code").then((v) => v.url),
+        await c.var.client
+          .authorize(c.var.redirectUri, "code")
+          .then((v) => v.url),
         302
       )
     );
-    fe.get("/", async () => {
+    fe.get("/", async (c) => {
       const cookies = new URLSearchParams(
         request.headers.get("cookie")?.replaceAll("; ", "&")
       );
-      const verified = await client.verify(
+      const verified = await c.var.client.verify(
         subjects,
         cookies.get("access_token")!,
         {
@@ -63,7 +74,10 @@ export default {
         }
       );
       if (verified.err)
-        return Response.redirect(url.origin + "/fe/authorize", 302);
+        return Response.redirect(
+          new URL(c.req.url).origin + "/fe/authorize",
+          302
+        );
       const response = Response.json(verified.subject);
       if (verified.tokens)
         setSession(response, verified.tokens.access, verified.tokens.refresh);
